@@ -1,6 +1,5 @@
 package junit;
 
-import org.assertj.core.api.AbstractAssert;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +89,11 @@ public class JunitRunningTest {
                 .isNotNull()
                 .extracting("name", "age")
                 .containsExactly("John", 25);
+
+        assertThat(person)
+                .hasFieldOrPropertyWithValue("name", "John")
+                .hasFieldOrPropertyWithValue("age", 25);
+
     }
 
     class Person {
