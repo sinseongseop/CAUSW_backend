@@ -1,5 +1,6 @@
 package net.causw.application.circle;
 
+import net.causw.adapter.persistence.board.Board;
 import net.causw.adapter.persistence.circle.Circle;
 import net.causw.adapter.persistence.circle.CircleMember;
 import net.causw.adapter.persistence.user.User;
@@ -7,6 +8,11 @@ import net.causw.domain.model.enums.CircleMemberStatus;
 import net.causw.domain.model.enums.Role;
 import net.causw.domain.model.enums.UserState;
 import net.causw.domain.model.user.UserDomainModel;
+
+import java.sql.Array;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
@@ -44,6 +50,11 @@ public class ObjectFixtures {
     // CircleMember
     public static CircleMember getCircleMember(CircleMemberStatus status, Circle circle){
         return CircleMember.of(status, circle ,getUser(Role.COMMON));
+    }
+
+    //Board
+    public static Board getBoard(){
+        return Board.of("testName", "description", new ArrayList<String>(),"Category", getCircle("testCircle"));
     }
 
 

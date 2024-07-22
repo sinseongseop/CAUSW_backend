@@ -2,10 +2,12 @@ package net.causw.application.circle;
 
 import groovy.lang.Tuple2;
 import jakarta.validation.Validator;
+import net.causw.adapter.persistence.board.Board;
 import net.causw.adapter.persistence.circle.Circle;
 import net.causw.adapter.persistence.circle.CircleMember;
 import net.causw.adapter.persistence.repository.*;
 import net.causw.adapter.persistence.user.User;
+import net.causw.application.dto.circle.CircleBoardsResponseDto;
 import net.causw.application.dto.circle.CircleResponseDto;
 import net.causw.application.dto.circle.CirclesResponseDto;
 import net.causw.application.util.TestUtil;
@@ -29,6 +31,7 @@ import java.util.*;
 
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
+import static net.causw.application.circle.ObjectFixtures.getCircle;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 
@@ -61,12 +64,14 @@ class CircleServiceTest {
     Circle circle;
     CircleMember circleMember;
     User user;
+    Board board;
 
     @BeforeEach
     void setUp() {
-        circle = ObjectFixtures.getCircle("circle1");
+        circle = getCircle("circle1");
         circleMember = ObjectFixtures.getCircleMember(CircleMemberStatus.MEMBER, circle);
         user = ObjectFixtures.getUser("user1");
+        board = ObjectFixtures.getBoard();
     }
 
     @Test
@@ -126,7 +131,7 @@ class CircleServiceTest {
     @EnumSource(value = Role.class, names = {"ADMIN", "PRESIDENT", "VICE_PRESIDENT"})
     void findAll_whenAdminOrPresidentOrVicePresident(Role role) {
         // Given
-        Circle circle2 = ObjectFixtures.getCircle("circle2");
+        Circle circle2 = getCircle("circle2");
         User user = ObjectFixtures.getUser(role);
         String userId = user.getId();
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
@@ -147,8 +152,8 @@ class CircleServiceTest {
     @EnumSource(value = Role.class, names = {"COUNCIL","LEADER_CIRCLE","COMMON"})
     void findAll_whenNormalUser(Role role) {
         // Given
-        List<Circle> circles = Arrays.asList(circle, ObjectFixtures.getCircle("circle2"),
-                ObjectFixtures.getCircle("circle3"));
+        List<Circle> circles = Arrays.asList(circle, getCircle("circle2"),
+                getCircle("circle3"));
         List<CircleMember> circleMembers = Arrays.asList(circleMember,
                 ObjectFixtures.getCircleMember(CircleMemberStatus.MEMBER, circles.get(1)),
                 ObjectFixtures.getCircleMember(CircleMemberStatus.AWAIT, circles.get(2)));
@@ -229,6 +234,111 @@ class CircleServiceTest {
                 .isInstanceOf(UnauthorizedException.class)
                 .hasFieldOrPropertyWithValue("errorCode", expectedError.getFirst())
                 .hasMessage(expectedError.getSecond());
+    }
+
+    @Test
+    @DisplayName("findBoards 에러 테스트 - User가 존재하지 않는 경우")
+    void findBoards_whenUserNotFound() {
+        // given
+        String nonExistentUserId = "nonExistentId";
+        String circleId = "circleId";
+        given(userRepository.findById(nonExistentUserId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> circleService.findBoards(nonExistentUserId, circleId))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ROW_DOES_NOT_EXIST)
+                .hasMessage(MessageUtil.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("findBoards 성공 테스트 - 존재하는 userID와 circleId로 게시판 찾기")
+    void findBoards() {
+        // Given
+        String userId = "userId";
+        String circleId = "circleId";
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(circleId)).willReturn(Optional.of(circle));
+        given(circleMemberRepository.findByUser_IdAndCircle_Id(userId, circleId)).willReturn(Optional.ofNullable(circleMember));
+        given(circleMemberRepository.getNumMember(circleId)).willReturn(1L);
+        given(boardRepository.findByCircle_IdAndIsDeletedIsFalseOrderByCreatedAtAsc(circleId)).willReturn(Arrays.asList(board));
+
+        // when
+        CircleBoardsResponseDto result = circleService.findBoards(userId,circleId);
+
+        //Then
+        assertThat(result).isNotNull();
+        assertThat(result.getCircle().getName()).isEqualTo(circle.getName());
+        assertThat(result.getBoardList().get(0).getName()).isEqualTo(board.getName());
+
+    }
+
+
+
+    @Test
+    @DisplayName("findBoards 에러 테스트 - circle이 존재하지 않는 경우")
+    void findBoards_whenCircleNotFound() {
+        // given
+        String userId = "userId";
+        String nonExistentCircleId = "nonExistentcircleId";
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(nonExistentCircleId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> circleService.findBoards(userId, nonExistentCircleId))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ROW_DOES_NOT_EXIST)
+                .hasMessage(MessageUtil.SMALL_CLUB_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("findBoards 에러 테스트 - 삭제된 Circle ID 호출")
+    void findBoards_whenDeletedCircle() {
+        // Given
+        String userId = "userId";
+        String deletedCircleId = "deletedCircleId";
+        circle = ObjectFixtures.getDeletedCirle();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(deletedCircleId)).willReturn(Optional.of(circle));
+
+        // When & Then
+        assertThatThrownBy(() -> circleService.findBoards(userId, deletedCircleId))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TARGET_DELETED)
+                .hasMessage("삭제된 " + StaticValue.DOMAIN_CIRCLE + " 입니다.");
+    }
+
+    @Test
+    @DisplayName("findBoards 에러 테스트 - user가 가입 신청한 소모임이 아닌 경우")
+    void findBoards_whenUserIsNotMember() {
+        // Given
+        String userId = "userId";
+        String circleId = "circleId";
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(circleId)).willReturn(Optional.of(circle));
+        given(circleMemberRepository.findByUser_IdAndCircle_Id(userId, circleId)).willReturn(Optional.empty());
+
+        // When & Then
+        assertThatThrownBy(() -> circleService.findBoards(userId, circleId))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ROW_DOES_NOT_EXIST)
+                .hasMessage(MessageUtil.CIRCLE_APPLY_INVALID);
+    }
+
+    @Test
+    @DisplayName("getNumMember 성공 테스트 - 특정 동아리의 맴버수 얻기")
+    void getNumMember(){
+        // Given
+        String circleId = "circleId";
+        Long memberCount = 2L;
+        given(circleRepository.findById(circleId)).willReturn(Optional.ofNullable(circle));
+        given(circleMemberRepository.getNumMember(circle.getId())).willReturn(memberCount);
+
+        // When
+        Long result = circleService.getNumMember(circleId);
+
+        // Then
+        assertThat(result).isEqualTo(memberCount);
     }
 
 }
