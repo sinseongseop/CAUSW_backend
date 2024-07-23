@@ -27,24 +27,24 @@ public class ObjectFixtures {
     }
 
     public static User getUser(Role role){
-        UserDomainModel userDomain = UserDomainModel.of("testID", "email3", "name3", "password3", "studentId3"
+        UserDomainModel userDomain = UserDomainModel.of("user1", "email3", "name3", "password3", "studentId3"
                 , 2023, role, "profileImage3", "testRefreshToken3",UserState.ACTIVE);
         return User.from(userDomain);
     }
 
     public static User getUser(UserState userState){
-        UserDomainModel userDomain = UserDomainModel.of("testID", "email", "name", "password", "studentId"
+        UserDomainModel userDomain = UserDomainModel.of("user1", "email", "name", "password", "studentId"
                 , 2023, Role.COMMON, "profileImage", "testRefreshToken",userState);
         return User.from(userDomain);
     }
 
     // Circle
     public static Circle getCircle(String circleName) {
-        return Circle.of(circleName,"testMainImage","testDescription", FALSE, getUser("testID"));
+        return Circle.of(circleName,"testMainImage","testDescription", FALSE, getUser(Role.LEADER_CIRCLE));
     }
 
     public static Circle getDeletedCirle(){
-        return Circle.of("deletedCircleName","testMainImage","testDescription", TRUE, getUser("testID"));
+        return Circle.of("deletedCircleName","testMainImage","testDescription", TRUE, getUser(Role.LEADER_CIRCLE));
     }
 
     // CircleMember

@@ -8,11 +8,13 @@ import net.causw.adapter.persistence.circle.CircleMember;
 import net.causw.adapter.persistence.repository.*;
 import net.causw.adapter.persistence.user.User;
 import net.causw.application.dto.circle.CircleBoardsResponseDto;
+import net.causw.application.dto.circle.CircleMemberResponseDto;
 import net.causw.application.dto.circle.CircleResponseDto;
 import net.causw.application.dto.circle.CirclesResponseDto;
 import net.causw.application.util.TestUtil;
 import net.causw.domain.exceptions.BadRequestException;
 import net.causw.domain.exceptions.ErrorCode;
+import net.causw.domain.exceptions.InternalServerException;
 import net.causw.domain.exceptions.UnauthorizedException;
 import net.causw.domain.model.enums.CircleMemberStatus;
 import net.causw.domain.model.enums.Role;
@@ -340,5 +342,97 @@ class CircleServiceTest {
         // Then
         assertThat(result).isEqualTo(memberCount);
     }
+
+    @Test
+    @DisplayName("getUserList 성공 테스트 - 동아리장이 동아리에서 특정 상태(Member)를 가진 유저를 얻는 경우")
+    void getUserList(){
+        // given
+        User circleLeader = ObjectFixtures.getUser(Role.LEADER_CIRCLE);
+        CircleMember circleMember2 = ObjectFixtures.getCircleMember(CircleMemberStatus.AWAIT,circle);
+        String userId = circleLeader.getId();
+        String circleId = "testCircleId";
+        given(userRepository.findById(circleLeader.getId())).willReturn(Optional.of(circleLeader));
+        given(circleRepository.findById(circleId)).willReturn(Optional.of(circle));
+        given(circleMemberRepository.findByCircle_Id(circle.getId())).willReturn(List.of(circleMember,circleMember2));
+
+        // when
+        List<CircleMemberResponseDto> result = circleService.getUserList(userId, circleId, CircleMemberStatus.MEMBER);
+
+        // then
+        assertThat(result).isNotEmpty();
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getStatus()).isEqualTo(CircleMemberStatus.MEMBER);
+        assertThat(result.get(0).getUser().getId()).isEqualTo(user.getId());
+    }
+
+    @Test
+    @DisplayName("getUserList 에러 테스트 - 조회 권한이 없는 유저(동아리장이 아닌 사람)가 조회를 호출한 경우")
+    void getUserList_whenUserIsNotLeader() {
+        // given
+        User circleLeader = ObjectFixtures.getUser(Role.LEADER_CIRCLE);
+        String nonLeaderUserId = "nonLeaderUserId";
+        String circleId = "circleId";
+        given(userRepository.findById(nonLeaderUserId)).willReturn(Optional.of(user));
+        given(userRepository.findById(circleLeader.getId())).willReturn(Optional.of(circleLeader));
+        given(circleRepository.findById(circleId)).willReturn(Optional.of(circle));
+
+        // when & then
+        assertThatThrownBy(() -> circleService.getUserList(nonLeaderUserId, circleId, CircleMemberStatus.MEMBER))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasFieldOrPropertyWithValue("errorCode",ErrorCode.API_NOT_ALLOWED)
+                .hasMessageContaining("접근 권한이 없습니다.");
+    }
+
+    @Test
+    @DisplayName("getUserList 에러 테스트 - Id에 해당하는 유저가 존재하지 않는 경우")
+    void getUserList_whenUserNotFound() {
+        // given
+        String nonExistentUserId = "nonExistentId";
+        String circleId = "circleId";
+        given(userRepository.findById(nonExistentUserId)).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> circleService.getUserList(nonExistentUserId, circleId, CircleMemberStatus.MEMBER))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ROW_DOES_NOT_EXIST)
+                .hasMessage(MessageUtil.USER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("getUserList 에러 테스트 - Id에 해당하는 circle이 존재하지 않는 경우")
+    void getUserList_whenCircleNotFound() {
+        // given
+        String userId = "testUser";
+        String circleId = "circleId";
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(circleId)).willReturn(Optional.empty());
+
+        // when/then
+        assertThatThrownBy(() -> circleService.getUserList(userId, circleId, CircleMemberStatus.MEMBER))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ROW_DOES_NOT_EXIST)
+                .hasMessage(MessageUtil.SMALL_CLUB_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("getUserList 에러 테스트 - 삭제된 Circle ID 호출")
+    void getUserList_whenDeletedCircle() {
+        // Given
+        User circleLeader = ObjectFixtures.getUser(Role.LEADER_CIRCLE);
+        String userId = "userId";
+        String deletedCircleId = "deletedCircleId";
+        circle = ObjectFixtures.getDeletedCirle();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(circleRepository.findById(deletedCircleId)).willReturn(Optional.of(circle));
+        given(userRepository.findById(circleLeader.getId())).willReturn(Optional.of(circleLeader));
+
+        // When & Then
+        assertThatThrownBy(() -> circleService.getUserList(userId, deletedCircleId,CircleMemberStatus.MEMBER))
+                .isInstanceOf(BadRequestException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.TARGET_DELETED)
+                .hasMessage("삭제된 " + StaticValue.DOMAIN_CIRCLE + " 입니다.");
+    }
+
+
 
 }
